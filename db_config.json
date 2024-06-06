@@ -1,0 +1,7 @@
+{
+    "db_type": "postgresql",  
+    "host": "localhost",
+    "user": "evolvy",
+    "password": "2481",
+    "database": "evolvy_production"
+}
