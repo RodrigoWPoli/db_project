@@ -3,5 +3,6 @@
     "host": "localhost",
     "user": "evolvy",
     "password": "2481",
-    "database": "evolvy_production"
+    "database": "evolvy_production",
+    "port": "5432"
 }
