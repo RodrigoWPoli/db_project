@@ -6,5 +6,12 @@ create a virtual enviroment with python 3.10:
 virtualenv venv -p=python3.10
 source venv/bin/activate
 
-pip install mysql-connector-python psycopg2-binary
+pip install -r requirements.txt
+```
+
+TO add new packages:
+
+```bash
+pip install package
+pip freeze > requirements.txt
 ```
