@@ -2,6 +2,7 @@ import psycopg2 as psql
 import json
 import mysql.connector as mysql
 from getpass import getpass
+from anytree import Node, RenderTree
 
 class DatabaseConnector:
     def __init__(self, db_config_path='db_config.json'):
@@ -53,9 +54,6 @@ class DatabaseConnector:
         elif config_type.lower() == 'n':
             self.create_config()
 
-
-
-
     def load_config(self, config_number):
         self.host = self.config_data[config_number]['host']
         self.port = self.config_data[config_number]['port']
@@ -83,8 +81,6 @@ class DatabaseConnector:
         with open(self.path, 'w') as file:
             json.dump(self.config_data, file, indent=4)
         
-
-
     def connect(self):
         try:
             if self.db_type == 'postgresql':
@@ -106,6 +102,7 @@ class DatabaseConnector:
             print(f"Now connected to the database {self.database}")
         except (psql.Error, mysql.Error) as e:
             print(f"Error connecting to the database: {e}")
+            
 
     def disconnect(self):
         if self.connection:
@@ -122,3 +119,64 @@ class DatabaseConnector:
         except (psql.Error, mysql.Error) as e:
             print(f"Error executing query: {e}")
             return None
+    
+    def get_schema(self):
+        if self.db_type == 'postgresql':
+            query = """
+            SELECT table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            ORDER BY table_name, ordinal_position;
+            """
+            view_query = """
+            SELECT table_name
+            FROM information_schema.views
+            WHERE table_schema = 'public';
+            """
+        elif self.db_type == 'mysql':
+            query = """
+            SELECT table_name, column_name, data_type
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+            ORDER BY table_name, ordinal_position;
+            """
+            view_query = """
+            SELECT table_name
+            FROM information_schema.views
+            WHERE table_schema = DATABASE();
+            """
+        else:
+            print("Unsupported database type")
+            return
+        
+        schema = self.execute_query(query)
+        views = self.execute_query(view_query)
+        if schema or views:
+            self.print_schema(schema, views)
+        else:
+            print("No schema information found")
+
+    def print_schema(self, schema, views):
+        root = Node("Database Schema")
+        tables_node = Node("Tables", parent=root)
+        views_node = Node("Views", parent=root)
+        
+        current_table = None
+        table_node = None
+        for table_name, column_name, data_type in schema:
+            if table_name != current_table:
+                table_node = Node(table_name, parent=tables_node)
+                current_table = table_name
+            Node(f"{column_name} ({data_type})", parent=table_node)
+
+        for view_name in views:
+            Node(view_name[0], parent=views_node)
+
+        for pre, fill, node in RenderTree(root):
+            print("%s%s" % (pre, node.name))
+
+# Example usage:
+# db = DatabaseConnector()
+# db.connect()
+# db.get_schema()
+# db.disconnect()
