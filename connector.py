@@ -12,6 +12,11 @@ class DatabaseConnector:
         self.db_type = 'db_type'
         self.connection = None
         self.path = db_config_path
+        self.set_config()
+
+
+
+    def set_config(self):
         try:
             with open(self.path, 'r') as file:
                 self.config_data = json.load(file)
@@ -30,6 +35,11 @@ class DatabaseConnector:
         if self.connection:
             self.disconnect()
     
+    def reconnect(self):
+        self.disconnect()
+        self.set_config()
+        self.connect()
+
     def get_config(self):
         config_type = input("Do you want to load an existing database connection? (y/n): ")
         if config_type.lower() == 'y':
@@ -93,7 +103,7 @@ class DatabaseConnector:
                     user=self.user,
                     password=self.password
                 )
-            print("Connected to the database!")
+            print(f"Now connected to the database {self.database}")
         except (psql.Error, mysql.Error) as e:
             print(f"Error connecting to the database: {e}")
 
