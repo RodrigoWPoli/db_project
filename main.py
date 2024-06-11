@@ -1,4 +1,3 @@
-from time import sleep
 import connector
 import os
 
@@ -6,21 +5,26 @@ import os
 def db_connection():
     db = connector.DatabaseConnector()
     db.connect()
-    sleep(3)
     while True:
         clear()
+        if (db):
+            print(f"Connected to {db.get_database_name()}")
         print("1. Execute query")
-        print("2. Connect to another database")
-        print("3. Exit")
+        print("2. Show schema")
+        print("3. Configurations")
+        print("4. Connect to another database")
+        print("5. Exit")
         choice = input("Enter your choice: ")
         if choice == '1':
             query = input("Enter your query: ")
-            res = db.execute_query(query)
-            print(res)
+            db.execute_query(query)
             input("Press enter to continue...")
         elif choice == '2':
+            schema = db.get_schema()
+            input("Press enter to continue...")
+        elif choice == '4':
             db.reconnect()
-        elif choice == '3':
+        elif choice == '5':
             break
 
 if __name__ == "__main__":
