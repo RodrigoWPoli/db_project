@@ -219,8 +219,8 @@ class DatabaseConnector:
 
         #get schema's tables
         cursor = self.__connection.cursor()
-        query = f"show tables from {self.__database};"
-        cursor.execute(query)
+        table_query = f"show tables from {self.__database};"
+        cursor.execute(table_query)
         tables = cursor.fetchall()
         
         #For each schema, get its columns
