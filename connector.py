@@ -211,3 +211,25 @@ class DatabaseConnector:
         for pre, fill, node in RenderTree(root):
             print("%s%s" % (pre, node.name))
 
+    
+    def print_schema_tree(self):
+        root_node = Node(self.__database)
+        tables_node = Node('Tables', parent = root_node)
+        
+        #get schema's tables
+        cursor = self.__connection.cursor()
+        query = f"show tables from {self.__database};"
+        cursor.execute(query)
+        tables = cursor.fetchall()
+        
+        #For each schema, get its columns
+        for table in tables:
+            table_node = Node(table[0], parent = tables_node)
+            cursor.execute(f"show fields from {table[0]};")
+            fields = cursor.fetchall()
+            for field in fields:
+                field_string = field[0] + '  ' + field[1] + '  ' + field[3]
+                Node(field_string, parent = table_node)
+
+        for pre, _fill, node in RenderTree(root_node):
+            print("%s%s" % (pre, node.name))
