@@ -12,5 +12,12 @@
         "database": "evolvy_production",
         "user": "evolvy",
         "db_type": "postgresql"
+    },
+    {
+        "host": "localhost",
+        "port": "3306",
+        "database": "university",
+        "user": "root",
+        "db_type": "mysql"
     }
 ]

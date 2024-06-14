@@ -215,7 +215,8 @@ class DatabaseConnector:
     def print_schema_tree(self):
         root_node = Node(self.__database)
         tables_node = Node('Tables', parent = root_node)
-        
+        views_node = Node('Views', parent = root_node)
+
         #get schema's tables
         cursor = self.__connection.cursor()
         query = f"show tables from {self.__database};"
@@ -231,5 +232,22 @@ class DatabaseConnector:
                 field_string = field[0] + '  ' + field[1] + '  ' + field[3]
                 Node(field_string, parent = table_node)
 
+        #get views
+        view_query = """
+            SELECT table_name
+            FROM information_schema.views
+            WHERE table_schema = DATABASE();
+            """
+        cursor.execute(view_query)
+        views = cursor.fetchall()
+        #Add a node under views for each view
+        for view in views:
+            Node(view[0], parent = views_node)
+        
+        print('\n')
         for pre, _fill, node in RenderTree(root_node):
             print("%s%s" % (pre, node.name))
+        
+        print('\n')
+        #Closes the connection
+        cursor.close()

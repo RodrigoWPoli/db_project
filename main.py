@@ -20,7 +20,7 @@ def db_connection():
             db.execute_query(query)
             input("Press enter to continue...")
         elif choice == '2':
-            schema = db.get_schema()
+            db.print_schema_tree() 
             input("Press enter to continue...")
         elif choice == '4':
             db.reconnect()
