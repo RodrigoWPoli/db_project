@@ -259,14 +259,6 @@ class DatabaseConnector:
             
             att_string = f"{att_name}  {type}  {key}"
             Node(att_string, parent = table_node)
-        #For each schema, get its columns
-        # for table in tables:
-        #     table_node = Node(table[0], parent = tables_node)
-        #     cursor.execute(f"show fields from {table[0]};")
-        #     fields = cursor.fetchall()
-        #     for field in fields:
-        #         field_string = field[0] + '  ' + field[1] + '  ' + field[3]
-        #         Node(field_string, parent = table_node)
 
         #get views
         cursor.execute(view_query)
