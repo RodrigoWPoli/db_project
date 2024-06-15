@@ -216,38 +216,69 @@ class DatabaseConnector:
         root_node = Node(self.__database)
         tables_node = Node('Tables', parent = root_node)
         views_node = Node('Views', parent = root_node)
-
-        #get schema's tables
-        cursor = self.__connection.cursor()
-        table_query = f"show tables from {self.__database};"
-        cursor.execute(table_query)
-        tables = cursor.fetchall()
         
-        #For each schema, get its columns
-        for table in tables:
-            table_node = Node(table[0], parent = tables_node)
-            cursor.execute(f"show fields from {table[0]};")
-            fields = cursor.fetchall()
-            for field in fields:
-                field_string = field[0] + '  ' + field[1] + '  ' + field[3]
-                Node(field_string, parent = table_node)
-
-        #get views
-        view_query = """
+        if self.__db_type == 'postgresql':
+            table_query = """
+            SELECT table_name, column_name, column_type, column_key
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            ORDER BY table_name, ordinal_position;
+            """
+            view_query = """
+            SELECT table_name
+            FROM information_schema.views
+            WHERE table_schema = 'public';
+            """
+        elif self.__db_type == 'mysql':
+            table_query = """
+            SELECT table_name, column_name, column_type, column_key
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+            ORDER BY table_name, ordinal_position;
+            """
+            view_query = """
             SELECT table_name
             FROM information_schema.views
             WHERE table_schema = DATABASE();
             """
+        else:
+            print("Unsupported database type")
+            return
+
+        #get schema's tables
+        cursor = self.__connection.cursor()
+        cursor.execute(table_query)
+        attributes = cursor.fetchall()
+        
+        table_node = None
+        current_table = None
+        for table, att_name, type, key in attributes:
+            if table != current_table:
+                table_node = Node(table, parent = tables_node)
+                current_table = table
+            
+            att_string = f"{att_name}  {type}  {key}"
+            Node(att_string, parent = table_node)
+        #For each schema, get its columns
+        # for table in tables:
+        #     table_node = Node(table[0], parent = tables_node)
+        #     cursor.execute(f"show fields from {table[0]};")
+        #     fields = cursor.fetchall()
+        #     for field in fields:
+        #         field_string = field[0] + '  ' + field[1] + '  ' + field[3]
+        #         Node(field_string, parent = table_node)
+
+        #get views
         cursor.execute(view_query)
         views = cursor.fetchall()
         #Add a node under views for each view
         for view in views:
             Node(view[0], parent = views_node)
-        
+
         print('\n')
         for pre, _fill, node in RenderTree(root_node):
             print("%s%s" % (pre, node.name))
-        
+
         print('\n')
         #Closes the connection
         cursor.close()
