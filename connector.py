@@ -22,7 +22,7 @@ class DatabaseConnector:
         if self.__connection:
             self.disconnect()
             self.__connection = None
-    
+
     def get_database_name(self):
         return self.__database
 
@@ -58,7 +58,7 @@ class DatabaseConnector:
             print("Connection loaded successfully!")
         elif config_type.lower() == 'n':
             self.create_config()
-        
+
     def create_config(self):
         print("Adding a new database connection...")
         self.__host = input("Enter the host: ")
@@ -77,7 +77,7 @@ class DatabaseConnector:
         self.config_data.append(config)
         with open(self.__path, 'w') as file:
             json.dump(self.config_data, file, indent=4)
-        
+
     def connect(self):
         try:
             if self.__db_type == 'postgresql':
@@ -98,7 +98,7 @@ class DatabaseConnector:
                 )
         except (psql.Error, mysql.Error) as e:
             print(f"Error connecting to the database: {e}")
-            
+
     def disconnect(self):
         if self.__connection:
             self.__connection.close()
@@ -113,19 +113,19 @@ class DatabaseConnector:
         if not query_results:
             print("No results to display.")
             return
-        
+
         table = PrettyTable()
         if column_description:
             table.field_names = [desc[0] for desc in column_description]
-        
+
         for row in query_results:
             table.add_row(row)
-        
+
         for field in table.field_names:
             table.max_width[field] = max_width
-        
+
         print(table)
-    
+
     def execute_query(self, query):
         try:
             cursor = self.__connection.cursor()
@@ -139,12 +139,12 @@ class DatabaseConnector:
                 self.save_query(results, description)
         except (psql.Error, mysql.Error) as e:
             raise f"Error executing query: {e}"
-    
+
     def save_query(self, results, description):
         if not results or not description:
             print("No results to save.")
             return
-        
+
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
         table_name = description[0][0] if description else 'query'
         filename = f"queries/{self.__database}_{now}.csv"
@@ -153,9 +153,9 @@ class DatabaseConnector:
             writer = csv.writer(file)
             writer.writerow([desc[0] for desc in description]) 
             writer.writerows(results)
-        
+
         print(f"Query results saved to {filename}")
-    
+
     def get_schema(self):
         if self.__db_type == 'postgresql':
             query = """
@@ -184,7 +184,7 @@ class DatabaseConnector:
         else:
             print("Unsupported database type")
             return
-        
+
         schema = self.execute_query(query)
         views = self.execute_query(view_query)
         if schema or views:
@@ -196,7 +196,7 @@ class DatabaseConnector:
         root = Node("Database Schema")
         tables_node = Node("Tables", parent=root)
         views_node = Node("Views", parent=root)
-        
+
         current_table = None
         table_node = None
         for table_name, column_name, data_type in schema:
@@ -211,19 +211,56 @@ class DatabaseConnector:
         for pre, fill, node in RenderTree(root):
             print("%s%s" % (pre, node.name))
 
-    
+
     def print_schema_tree(self):
         root_node = Node(self.__database)
         tables_node = Node('Tables', parent = root_node)
         views_node = Node('Views', parent = root_node)
-        
+
         if self.__db_type == 'postgresql':
             table_query = """
-            SELECT table_name, column_name, column_type, column_key
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-            ORDER BY table_name, ordinal_position;
-            """
+            SELECT
+                cols.table_name,
+                cols.column_name,
+                cols.data_type,
+                CASE
+                        WHEN cols.character_maximum_length IS NOT NULL THEN cols.character_maximum_length
+                    ELSE CASE 
+                        WHEN cols.numeric_precision IS NOT NULL THEN cols.numeric_precision
+                    ELSE NULL 
+                END
+                END AS length,
+                CASE
+                    WHEN pk.column_name IS NOT NULL THEN 'YES'
+                    ELSE 'NO'
+                END AS is_primary_key
+                FROM
+                information_schema.columns cols
+                LEFT JOIN (
+                SELECT
+                    kcu.table_schema,
+                    kcu.table_name,
+                    kcu.column_name
+                FROM
+                    information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                    AND tc.table_name = kcu.table_name
+                WHERE
+                    tc.constraint_type = 'PRIMARY KEY'
+            ) pk
+            ON
+                cols.table_schema = pk.table_schema
+                AND cols.table_name = pk.table_name
+                AND cols.column_name = pk.column_name
+            WHERE
+                cols.table_schema = 'public'
+            ORDER BY
+                cols.table_schema,
+                cols.table_name,
+                cols.ordinal_position;
+                        """
             view_query = """
             SELECT table_name
             FROM information_schema.views
@@ -252,13 +289,26 @@ class DatabaseConnector:
         
         table_node = None
         current_table = None
-        for table, att_name, type, key in attributes:
-            if table != current_table:
-                table_node = Node(table, parent = tables_node)
-                current_table = table
-            
-            att_string = f"{att_name}  {type}  {key}"
-            Node(att_string, parent = table_node)
+        if self.__db_type == "mysql":
+            for table, att_name, type, key in attributes:
+                if table != current_table:
+                    table_node = Node(table, parent = tables_node)
+                    current_table = table
+
+                att_string = f"{att_name}  {type}  {key}"
+                Node(att_string, parent = table_node)
+        else:
+            for table, att, att_type, length, is_pk in attributes:
+                if table != current_table:
+                    table_node = Node(table, parent= tables_node)
+                    current_table = table
+                
+                att_string = f"{att}  {att_type}"
+                if length != None:
+                    att_string = att_string + f"({length})"
+                if is_pk == 'YES':
+                    att_string = att_string + '  PK'
+                Node(att_string, parent = table_node)
 
         #get views
         cursor.execute(view_query)

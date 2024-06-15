@@ -19,5 +19,12 @@
         "database": "university",
         "user": "root",
         "db_type": "mysql"
+    },
+    {
+        "host": "localhost",
+        "port": "5432",
+        "database": "books",
+        "user": "postgres",
+        "db_type": "postgresql"
     }
 ]
