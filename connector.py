@@ -175,24 +175,7 @@ class DatabaseConnector:
 
         if self.__db_type == 'postgresql':
             table_query = """
-            SELECT
-                cols.table_name,
-                cols.column_name,
-                cols.data_type,
-                CASE
-                        WHEN cols.character_maximum_length IS NOT NULL THEN cols.character_maximum_length
-                    ELSE CASE 
-                        WHEN cols.numeric_precision IS NOT NULL THEN cols.numeric_precision
-                    ELSE NULL 
-                END
-                END AS length,
-                CASE
-                    WHEN pk.column_name IS NOT NULL THEN 'YES'
-                    ELSE 'NO'
-                END AS is_primary_key
-                FROM
-                information_schema.columns cols
-                LEFT JOIN (
+            WITH primary_keys AS (
                 SELECT
                     kcu.table_schema,
                     kcu.table_name,
@@ -205,9 +188,20 @@ class DatabaseConnector:
                     AND tc.table_name = kcu.table_name
                 WHERE
                     tc.constraint_type = 'PRIMARY KEY'
-            ) pk
-            ON
-                cols.table_schema = pk.table_schema
+            )
+            SELECT
+                cols.table_name,
+                cols.column_name,
+                cols.data_type,
+                COALESCE(cols.character_maximum_length::int, cols.numeric_precision) AS length,
+                CASE
+                    WHEN pk.column_name IS NOT NULL THEN 'YES'
+                    ELSE 'NO'
+                END AS is_primary_key
+            FROM
+                information_schema.columns cols
+            LEFT JOIN primary_keys pk
+                ON cols.table_schema = pk.table_schema
                 AND cols.table_name = pk.table_name
                 AND cols.column_name = pk.column_name
             WHERE
