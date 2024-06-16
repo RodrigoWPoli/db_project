@@ -15,6 +15,7 @@ class DatabaseConnector:
         self.__user = 'user'
         self.__db_type = 'db_type'
         self.__connection = None
+        self.__limit = 1000
         self.__path = db_config_path
         self.set_config()
 
@@ -25,6 +26,12 @@ class DatabaseConnector:
 
     def get_database_name(self):
         return self.__database
+    
+    def get_limit(self):
+        return self.__limit
+    
+    def set_limit(self, limit):
+        self.__limit = limit
 
     def set_config(self):
         try:
@@ -128,17 +135,23 @@ class DatabaseConnector:
 
     def execute_query(self, query):
         try:
+            # will check if query has a limit clause, if not, it will add one
+            if "LIMIT" not in query.upper():
+                query = f"{query.strip().rstrip(';')} LIMIT {self.__limit};"
+
             cursor = self.__connection.cursor()
             cursor.execute(query)
             results = cursor.fetchall()
             description = cursor.description
             cursor.close()
             self.print_query_results(results, description)
+
             save = input(f"Do you want to save the results to a CSV file? (y/n)")
-            if save.lower() == 'y' :
+            if save.lower() == 'y':
                 self.save_query(results, description)
         except (psql.Error, mysql.Error) as e:
-            raise f"Error executing query: {e}"
+            print(f"Error executing query: {e}")
+
 
     def save_query(self, results, description):
         if not results or not description:
@@ -146,7 +159,6 @@ class DatabaseConnector:
             return
 
         now = datetime.now().strftime("%Y%m%d_%H%M%S")
-        table_name = description[0][0] if description else 'query'
         filename = f"queries/{self.__database}_{now}.csv"
 
         with open(filename, mode='w', newline='') as file:
@@ -155,62 +167,6 @@ class DatabaseConnector:
             writer.writerows(results)
 
         print(f"Query results saved to {filename}")
-
-    def get_schema(self):
-        if self.__db_type == 'postgresql':
-            query = """
-            SELECT table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-            ORDER BY table_name, ordinal_position;
-            """
-            view_query = """
-            SELECT table_name
-            FROM information_schema.views
-            WHERE table_schema = 'public';
-            """
-        elif self.__db_type == 'mysql':
-            query = """
-            SELECT table_name, column_name, data_type
-            FROM information_schema.columns
-            WHERE table_schema = DATABASE()
-            ORDER BY table_name, ordinal_position;
-            """
-            view_query = """
-            SELECT table_name
-            FROM information_schema.views
-            WHERE table_schema = DATABASE();
-            """
-        else:
-            print("Unsupported database type")
-            return
-
-        schema = self.execute_query(query)
-        views = self.execute_query(view_query)
-        if schema or views:
-            self.print_schema(schema, views)
-        else:
-            print("No schema information found")
-
-    def print_schema(self, schema, views):
-        root = Node("Database Schema")
-        tables_node = Node("Tables", parent=root)
-        views_node = Node("Views", parent=root)
-
-        current_table = None
-        table_node = None
-        for table_name, column_name, data_type in schema:
-            if table_name != current_table:
-                table_node = Node(table_name, parent=tables_node)
-                current_table = table_name
-            Node(f"{column_name} ({data_type})", parent=table_node)
-
-        for view_name in views:
-            Node(view_name[0], parent=views_node)
-
-        for pre, fill, node in RenderTree(root):
-            print("%s%s" % (pre, node.name))
-
 
     def print_schema_tree(self):
         root_node = Node(self.__database)
