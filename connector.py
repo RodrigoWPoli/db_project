@@ -21,6 +21,9 @@ class DatabaseConnector:
         self.set_config()
 
     def __del__(self):
+        self.close()
+
+    def close(self):
         if self.__connection:
             self.disconnect()
             self.__connection = None
@@ -90,6 +93,9 @@ class DatabaseConnector:
 
     def connect(self):
         self.password = getpass(f"Enter password for {self.__user}: ")
+        if self.__db_type not in ['postgresql', 'mysql']:
+            print("Invalid database type. Please use 'postgresql' or 'mysql'.")
+            self.get_config()
         try:
             if self.__db_type == 'postgresql':
                 self.__connection = psql.connect(
@@ -179,22 +185,30 @@ class DatabaseConnector:
 
     def execute_query(self, query):
         try:
-            # will check if query has a limit clause, if not, it will add one
-            if "LIMIT" not in query.upper():
+            cursor = self.__connection.cursor()
+            # will check if query has a limit clause and is a select, if it doesn't have, it will add one
+            if "LIMIT" not in query.upper() and query.upper().startswith("SELECT"):
                 query = f"{query.strip().rstrip(';')} LIMIT {self.__limit};"
 
-            cursor = self.__connection.cursor()
             cursor.execute(query)
-            results = cursor.fetchall()
-            description = cursor.description
-            cursor.close()
-            self.print_query_results(results, description)
+            # will check if the query is a select, if it is, it will fetch the results and print them
+            if query.upper().startswith("SELECT"):
+                results = cursor.fetchall()
+                description = cursor.description
+                self.print_query_results(results, description)
 
-            save = input(f"Do you want to save the results to a CSV file? (y/n)")
-            if save.lower() == 'y':
-                self.save_query(results, description)
+                save = input(f"Do you want to save the results to a CSV file? (y/n)")
+                if save.lower() == 'y':
+                    self.save_query(results, description)
+            # if the query is not a select, it will commit the changes
+            else:
+                self.__connection.commit()
+                print("Query executed successfully.")
         except (psql.Error, mysql.Error) as e:
-            raise f"Error executing query: {e}"
+            print(f"Error executing query: {e}")
+        finally:
+            if cursor:
+                cursor.close()
 
 
     def save_query(self, results, description):
@@ -213,108 +227,108 @@ class DatabaseConnector:
         print(f"Query results saved to {filename}")
 
     def print_schema_tree(self):
-        root_node = Node(self.__database)
-        tables_node = Node('Tables', parent = root_node)
-        views_node = Node('Views', parent = root_node)
+        try:
+            root_node = Node(self.__database)
+            tables_node = Node('Tables', parent = root_node)
+            views_node = Node('Views', parent = root_node)
 
-        if self.__db_type == 'postgresql':
-            table_query = """
-            WITH primary_keys AS (
+            if self.__db_type == 'postgresql':
+                table_query = """
+                WITH primary_keys AS (
+                    SELECT
+                        kcu.table_schema,
+                        kcu.table_name,
+                        kcu.column_name
+                    FROM
+                        information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                        AND tc.table_name = kcu.table_name
+                    WHERE
+                        tc.constraint_type = 'PRIMARY KEY'
+                )
                 SELECT
-                    kcu.table_schema,
-                    kcu.table_name,
-                    kcu.column_name
+                    cols.table_name,
+                    cols.column_name,
+                    cols.data_type,
+                    COALESCE(cols.character_maximum_length::int, cols.numeric_precision) AS length,
+                    CASE
+                        WHEN pk.column_name IS NOT NULL THEN 'YES'
+                        ELSE 'NO'
+                    END AS is_primary_key
                 FROM
-                    information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                    ON tc.constraint_name = kcu.constraint_name
-                    AND tc.table_schema = kcu.table_schema
-                    AND tc.table_name = kcu.table_name
+                    information_schema.columns cols
+                LEFT JOIN primary_keys pk
+                    ON cols.table_schema = pk.table_schema
+                    AND cols.table_name = pk.table_name
+                    AND cols.column_name = pk.column_name
                 WHERE
-                    tc.constraint_type = 'PRIMARY KEY'
-            )
-            SELECT
-                cols.table_name,
-                cols.column_name,
-                cols.data_type,
-                COALESCE(cols.character_maximum_length::int, cols.numeric_precision) AS length,
-                CASE
-                    WHEN pk.column_name IS NOT NULL THEN 'YES'
-                    ELSE 'NO'
-                END AS is_primary_key
-            FROM
-                information_schema.columns cols
-            LEFT JOIN primary_keys pk
-                ON cols.table_schema = pk.table_schema
-                AND cols.table_name = pk.table_name
-                AND cols.column_name = pk.column_name
-            WHERE
-                cols.table_schema = 'public'
-            ORDER BY
-                cols.table_schema,
-                cols.table_name,
-                cols.ordinal_position;
-                        """
-            view_query = """
-            SELECT table_name
-            FROM information_schema.views
-            WHERE table_schema = 'public';
-            """
-        elif self.__db_type == 'mysql':
-            table_query = """
-            SELECT table_name, column_name, column_type, column_key
-            FROM information_schema.columns
-            WHERE table_schema = DATABASE()
-            ORDER BY table_name, ordinal_position;
-            """
-            view_query = """
-            SELECT table_name
-            FROM information_schema.views
-            WHERE table_schema = DATABASE();
-            """
-        else:
-            print("Unsupported database type")
-            return
+                    cols.table_schema = 'public'
+                ORDER BY
+                    cols.table_schema,
+                    cols.table_name,
+                    cols.ordinal_position;
+                            """
+                view_query = """
+                SELECT table_name
+                FROM information_schema.views
+                WHERE table_schema = 'public';
+                """
+            elif self.__db_type == 'mysql':
+                table_query = """
+                SELECT table_name, column_name, column_type, column_key
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                ORDER BY table_name, ordinal_position;
+                """
+                view_query = """
+                SELECT table_name
+                FROM information_schema.views
+                WHERE table_schema = DATABASE();
+                """
 
-        #get schema's tables
-        cursor = self.__connection.cursor()
-        cursor.execute(table_query)
-        attributes = cursor.fetchall()
-        
-        table_node = None
-        current_table = None
-        if self.__db_type == "mysql":
-            for table, att_name, type, key in attributes:
-                if table != current_table:
-                    table_node = Node(table, parent = tables_node)
-                    current_table = table
+            #get schema's tables
+            cursor = self.__connection.cursor()
+            cursor.execute(table_query)
+            attributes = cursor.fetchall()
 
-                att_string = f"{att_name}  {type}  {key}"
-                Node(att_string, parent = table_node)
-        else:
-            for table, att, att_type, length, is_pk in attributes:
-                if table != current_table:
-                    table_node = Node(table, parent= tables_node)
-                    current_table = table
-                
-                att_string = f"{att}  {att_type}"
-                if length != None:
-                    att_string = att_string + f"({length})"
-                if is_pk == 'YES':
-                    att_string = att_string + '  PK'
-                Node(att_string, parent = table_node)
+            table_node = None
+            current_table = None
+            if self.__db_type == "mysql":
+                for table, att_name, type, key in attributes:
+                    if table != current_table:
+                        table_node = Node(table, parent = tables_node)
+                        current_table = table
 
-        #get views
-        cursor.execute(view_query)
-        views = cursor.fetchall()
-        #Add a node under views for each view
-        for view in views:
-            Node(view[0], parent = views_node)
+                    att_string = f"{att_name}  {type}  {key}"
+                    Node(att_string, parent = table_node)
+            else:
+                for table, att, att_type, length, is_pk in attributes:
+                    if table != current_table:
+                        table_node = Node(table, parent= tables_node)
+                        current_table = table
 
-        print('\n')
-        for pre, _fill, node in RenderTree(root_node):
-            print("%s%s" % (pre, node.name))
+                    att_string = f"{att}  {att_type}"
+                    if length != None:
+                        att_string = att_string + f"({length})"
+                    if is_pk == 'YES':
+                        att_string = att_string + '  PK'
+                    Node(att_string, parent = table_node)
 
-        print('\n')
-        #Closes the connection
-        cursor.close()
+            #get views
+            cursor.execute(view_query)
+            views = cursor.fetchall()
+            #Add a node under views for each view
+            for view in views:
+                Node(view[0], parent = views_node)
+
+            print('\n')
+            for pre, _fill, node in RenderTree(root_node):
+                print("%s%s" % (pre, node.name))
+
+            print('\n')
+            #Closes the connection
+            cursor.close()
+        except Exception as e:
+            print(f"Error getting schema: {e}")

@@ -27,6 +27,9 @@ def db_connection():
         elif choice == '4':
             db.reconnect()
         elif choice == '5':
+            clear()
+            db.close()
+            print("bye!")
             break
 
 
