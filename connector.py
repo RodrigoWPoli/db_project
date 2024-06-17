@@ -1,10 +1,10 @@
 import psycopg2 as psql
-import json
 import mysql.connector as mysql
 from getpass import getpass
 from prettytable import PrettyTable
 from anytree import Node, RenderTree
 import csv
+import json
 from datetime import datetime
 
 class DatabaseConnector:
@@ -17,6 +17,7 @@ class DatabaseConnector:
         self.__connection = None
         self.__limit = 1000
         self.__path = db_config_path
+        self.config_index = None
         self.set_config()
 
     def __del__(self):
@@ -37,6 +38,8 @@ class DatabaseConnector:
         try:
             with open(self.__path, 'r') as file:
                 self.config_data = json.load(file)
+                if not self.config_data:
+                    raise FileNotFoundError
                 self.get_config()
         except FileNotFoundError:
             print("Configuration file not found. Creating a new one...")
@@ -45,8 +48,6 @@ class DatabaseConnector:
             with open(self.__path, 'r') as file:
                 self.config_data = json.load(file)
             self.create_config()
-        finally:
-            self.password = getpass(f"Enter password for {self.__user}: ")
 
     def get_config(self):
         config_type = input("Do you want to load an existing database connection? (y/n): ")
@@ -57,6 +58,7 @@ class DatabaseConnector:
                 print(f"Database: {config['database']}", end=', ')
                 print(f"DB Type: {config['db_type']}")
             config_number = int(input("Enter the connection number: "))
+            self.config_index = config_number
             self.__host = self.config_data[config_number]['host']
             self.__port = self.config_data[config_number]['port']
             self.__database = self.config_data[config_number]['database']
@@ -82,10 +84,12 @@ class DatabaseConnector:
             'db_type': self.__db_type
         }
         self.config_data.append(config)
+        self.config_index = len(self.config_data) - 1
         with open(self.__path, 'w') as file:
             json.dump(self.config_data, file, indent=4)
 
     def connect(self):
+        self.password = getpass(f"Enter password for {self.__user}: ")
         try:
             if self.__db_type == 'postgresql':
                 self.__connection = psql.connect(
@@ -104,7 +108,47 @@ class DatabaseConnector:
                     password=self.password
                 )
         except (psql.Error, mysql.Error) as e:
-            print(f"Error connecting to the database: {e}")
+            if "does not exist" in str(e):
+                print(f"Database {self.__database} does not exist.")
+                fix = input("Do you want to fix the database connection information? (y/n): ")
+                if fix.lower() == 'y':
+                    self.modify_config()
+                else:
+                    self.get_config()
+            else:
+                print(f"Error connecting to the database: {e}")
+                self.connect()
+
+    def modify_config(self):
+        if self.config_index is None:
+            print("No configuration loaded to modify.")
+            return
+
+        print("Modifying the current database connection...")
+        print("Current configuration:")
+        print(f"Host: {self.__host}")
+        print(f"Port: {self.__port}")
+        print(f"Database: {self.__database}")
+        print(f"User: {self.__user}")
+        print(f"DB Type: {self.__db_type}")
+
+        self.__host = input("Enter the host (leave empty to keep the current value): ") or self.__host
+        self.__port = input("Enter the port (leave empty to keep the current value): ") or self.__port
+        self.__database = input("Enter the database name (leave empty to keep the current value): ") or self.__database
+        self.__user = input("Enter the username (leave empty to keep the current value): ") or self.__user
+        self.__db_type = input("Enter the database type (postgresql/mysql) (leave empty to keep the current value): ") or self.__db_type
+
+        config = {
+            'host': self.__host,
+            'port': self.__port,
+            'database': self.__database,
+            'user': self.__user,
+            'db_type': self.__db_type
+        }
+        self.config_data[self.config_index] = config
+        with open(self.__path, 'w') as file:
+            json.dump(self.config_data, file, indent=4)
+        self.connect()
 
     def disconnect(self):
         if self.__connection:
@@ -150,7 +194,7 @@ class DatabaseConnector:
             if save.lower() == 'y':
                 self.save_query(results, description)
         except (psql.Error, mysql.Error) as e:
-            print(f"Error executing query: {e}")
+            raise f"Error executing query: {e}"
 
 
     def save_query(self, results, description):
