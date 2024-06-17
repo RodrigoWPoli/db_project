@@ -5,7 +5,7 @@ In order to run:
 ./setup.sh
 ./run.sh
 ```
-or manually:
+Or manually:
 
 create a virtual enviroment with python 3.10:
 
@@ -19,7 +19,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-TO add new packages:
+To add new packages:
 
 ```bash
 pip install package
