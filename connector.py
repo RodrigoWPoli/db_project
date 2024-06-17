@@ -179,22 +179,28 @@ class DatabaseConnector:
 
     def execute_query(self, query):
         try:
-            # will check if query has a limit clause, if not, it will add one
-            if "LIMIT" not in query.upper():
+            # will check if query has a limit clause and is a select, if it doesn't have, it will add one
+            if "LIMIT" not in query.upper() and query.upper().startswith("SELECT"):
                 query = f"{query.strip().rstrip(';')} LIMIT {self.__limit};"
 
             cursor = self.__connection.cursor()
             cursor.execute(query)
-            results = cursor.fetchall()
-            description = cursor.description
-            cursor.close()
-            self.print_query_results(results, description)
+            # will check if the query is a select, if it is, it will fetch the results and print them
+            if query.upper().startswith("SELECT"):
+                results = cursor.fetchall()
+                description = cursor.description
+                self.print_query_results(results, description)
 
-            save = input(f"Do you want to save the results to a CSV file? (y/n)")
-            if save.lower() == 'y':
-                self.save_query(results, description)
+                save = input(f"Do you want to save the results to a CSV file? (y/n)")
+                if save.lower() == 'y':
+                    self.save_query(results, description)
+            # if the query is not a select, it will commit the changes
+            else:
+                self.__connection.commit()
+                print("Query executed successfully.")
+            cursor.close()
         except (psql.Error, mysql.Error) as e:
-            raise f"Error executing query: {e}"
+            print(f"Error executing query: {e}")
 
 
     def save_query(self, results, description):
